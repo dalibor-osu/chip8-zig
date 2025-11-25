@@ -49,12 +49,18 @@ pub const Cpu = struct {
 
     // Other
     display: [display_height][display_width]bool,
+    random: std.Random,
 
     pub fn init(program: []const u8) Cpu {
         var self = std.mem.zeroes(Cpu);
         self.ram[characters_offset .. characters_offset + font.len].* = font;
         @memcpy(self.ram[program_offset .. program_offset + program.len], program);
         self.pc = program_offset;
+
+        var seed: u64 = undefined;
+        try std.posix.getrandom(std.mem.asBytes(&seed));
+        self.random = std.Random.DefaultPrng.init(seed).random();
+
         return self;
     }
 
@@ -65,7 +71,6 @@ pub const Cpu = struct {
         while (!raylib.windowShouldClose()) {
             const instruction = self.fetch();
             try self.decodeExecute(instruction);
-
 
             raylib.beginDrawing();
             for (0..display_height) |i| {
@@ -144,30 +149,132 @@ pub const Cpu = struct {
     }
 
     // Instructions
+    // 00E0
     fn instClearScreen(self: *Cpu) void {
         for (self.display) |row| {
             @memset(@constCast(&row), false);
         }
     }
 
+    // 1NNN
     fn instJump(self: *Cpu, dest: u16) void {
         self.pc = dest;
     }
 
+    // 3XNN
+    fn instSkipIfEqual(self: *Cpu, reg: u4, value: u8) void {
+        const register = self.getRegister(reg);
+        if (register.* == value) {
+            self.pc += 2;
+        }
+    }
+
+    // 4XNN
+    fn instSkipIfNotEqual(self: *Cpu, reg: u4, value: u8) void {
+        const register = self.getRegister(reg);
+        if (register.* != value) {
+            self.pc += 2;
+        }
+    }
+
+    // 5XY0
+    fn instSkipIfRegsEqual(self: *Cpu, regX: u4, regY: u4) void {
+        const registerX = self.getRegister(regX);
+        const registerY = self.getRegister(regY);
+
+        if (registerX.* == registerY.*) {
+            self.pc += 2;
+        }
+    }
+
+    //6XNN
     fn instSet(self: *Cpu, reg: u4, value: u8) void {
         const register = self.getRegister(reg);
         register.* = value;
     }
 
+    // 7XNN
     fn instAdd(self: *Cpu, reg: u4, value: u8) void {
         const register = self.getRegister(reg);
         register.* += value;
     }
 
+    // 8XYI
+    fn instLogicAndArithmetic(self: *Cpu, regX: u4, regY: u4, subInst: u4) !void {
+        const registerX = self.getRegister(regX);
+        const registerY = self.getRegister(regY);
+
+        switch (subInst) {
+            0x0 => {
+                registerX.* = registerY.*;
+            },
+            0x1 => {
+                registerX.* |= registerY.*;
+            },
+            0x2 => {
+                registerX.* &= registerY.*;
+            },
+            0x3 => {
+                registerX.* ^= registerY.*;
+            },
+            0x4 => {
+                if (registerX.* + registerY.* > 255) {
+                    self.vf = 1;
+                }
+                registerX.* += registerY.*;
+            },
+            0x5 => {
+                registerX.* -= registerY.*;
+            },
+            0x6 => {
+                registerX.* = registerY.*;
+                const shiftedBit = registerX.* & 0b0000_0001;
+                self.vf = shiftedBit;
+                registerX.* >>= 1;
+            },
+            0x7 => {
+                registerX.* = registerY.* - registerX.*;
+            },
+            0xE => {
+                registerX.* = registerY.*;
+                const shiftedBit = registerX.* & 0b1000_0000;
+                self.vf = shiftedBit;
+                registerX.* <<= 1;
+            },
+            else => {
+                log.err("Reached unknown logic/arithmetic instruction: 0x8XY{X}", .{subInst});
+                return CpuError.UnknownInstruction;
+            }
+        }
+    }
+
+    // 9XY0
+    fn instSkipIfRegsNotEqual(self: *Cpu, regX: u4, regY: u4) void {
+        const registerX = self.getRegister(regX);
+        const registerY = self.getRegister(regY);
+
+        if (registerX.* != registerY.*) {
+            self.pc += 2;
+        }
+    }
+
+    // ANNN
     fn instSetIndex(self: *Cpu, value: u16) void {
         self.i = value;
     }
 
+    // BNNN (original implementation)
+    fn instJumpWithOffset(self: *Cpu, address: u12) void {
+        self.pc = address + self.v0;
+    }
+
+    fn instRandom(self: *Cpu, reg: u4, value: u8) void {
+        const register = self.getRegister(reg);
+        const randomNumber = self.random.int(u8);
+        register.* = randomNumber & value;
+    }
+
+    // DXYN
     fn instDraw(self: *Cpu, regX: u4, regY: u4, height: u4) void {
         const regXValue = self.getRegisterValue(regX);
         const regYValue = self.getRegisterValue(regY);
