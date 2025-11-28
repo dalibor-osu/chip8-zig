@@ -68,7 +68,7 @@ pub const Cpu = struct {
         defer raylib.closeWindow();
 
         const timerDelay: f32 = 1.0 / 60.0; // 60hz
-        const instructionDelay: f32 = 1.0 / 20.0; // 700hz
+        const instructionDelay: f32 = 1.0 / 700.0; // 700hz
 
         var nextTimerUpdate: f64 = timerDelay;
         var nextInstructionUpdate: f64 = instructionDelay;
@@ -104,7 +104,7 @@ pub const Cpu = struct {
             }
             // TODO: Add sound
             if (self.sound_timer > 0) {
-                raylib.drawText("[PLAYING SOUND]", 5, 5, 20, raylib.Color.white);
+                raylib.drawText("[PLAYING SOU70D]", 5, 5, 20, raylib.Color.white);
             }
             raylib.endDrawing();
         }
@@ -332,6 +332,11 @@ pub const Cpu = struct {
                 registerX.* >>= 1;
             },
             0x7 => {
+                if (registerX.* > registerY.*) {
+                    registerX.* = 0;
+                    return;
+                }
+
                 registerX.* = registerY.* - registerX.*;
             },
             0xE => {
@@ -508,8 +513,8 @@ pub const Cpu = struct {
 
     // FX55
     fn instStoreMemory(self: *Cpu, reg: u4) void {
-        const register = self.getRegister(reg);
-        for (0..register.* + 1) |i| {
+        const maxReg: u8 = @intCast(reg);
+        for (0..maxReg + 1) |i| {
             const val: u4 = @truncate(i);
             const currentRegister = self.getRegister(val);
             self.ram[self.i + val] = currentRegister.*;
@@ -518,7 +523,8 @@ pub const Cpu = struct {
 
     // FX65
     fn instLoadMemeory(self: *Cpu, reg: u4) void {
-        for (0..reg + 1) |i| {
+        const maxReg: u8 = @intCast(reg);
+        for (0..maxReg + 1) |i| {
             const val: u4 = @truncate(i);
             const currentRegister = self.getRegister(val);
             currentRegister.* = self.ram[self.i + val];
