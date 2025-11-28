@@ -19,6 +19,6 @@ pub fn main() !void {
 
     const stat = try file.stat();
     const buf: []u8 = try file.readToEndAlloc(allocator, stat.size);
-    var cpu = Cpu.init(buf);
+    var cpu = try Cpu.init(buf);
     try cpu.run();
 }
