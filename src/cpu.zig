@@ -104,7 +104,7 @@ pub const Cpu = struct {
             }
             // TODO: Add sound
             if (self.sound_timer > 0) {
-                raylib.drawText("[PLAYING SOU70D]", 5, 5, 20, raylib.Color.white);
+                raylib.drawText("[PLAYING SOUND]", 5, 5, 20, raylib.Color.white);
             }
             raylib.endDrawing();
         }
